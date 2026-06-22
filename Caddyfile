@@ -1,6 +1,6 @@
 reverser.d1s.dev {
     encode zstd gzip
-    reverse_proxy localhost:8080 {
+    reverse_proxy localhost:7272 {
                                      flush_interval - 1
                                      header_up Host {upstream_hostport}
                                      header_up X-Real-IP {remote_host}
