@@ -1,0 +1,11 @@
+# IntelliJ IDEA / JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+cmake-build-*/
+
+# OS-specific
+.DS_Store
+Thumbs.db

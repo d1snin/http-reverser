@@ -1,0 +1,12 @@
+services:
+  httpreverser:
+    build: .
+    container_name: httpreverser
+    restart: always
+    ports:
+      - "127.0.0.1:7272:7272"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

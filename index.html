@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Reverser</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.5.0/github-markdown.min.css">
+    <style>
+        body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: #0d1117; /* GitHub Dark background */
+        }
+        @media (max-width: 767px) {
+            body { padding: 15px; }
+        }
+        .error-banner {
+            display: none;
+            background-color: #ffebe9;
+            color: #cf222e;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,129,130,0.4);
+        }
+        .link-container {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            align-items: center;
+        }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 8px 12px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background-color: #010409;
+            color: #c9d1d9;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        button {
+            background-color: #238636;
+            color: #ffffff;
+            border: 1px solid rgba(240,246,252,0.1);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: .2s;
+        }
+        button:hover { background-color: #2ea043; }
+        button.secondary { background-color: #21262d; }
+        button.secondary:hover { background-color: #30363d; }
+        #request-data { display: none; }
+        .spinner { display: none; font-style: italic; color: #8b949e; margin-top: 10px; }
+    </style>
+</head>
+<body class="markdown-body" data-color-mode="dark" data-dark-theme="dark">
+
+<h1>HTTP Reverser</h1>
+<p>Generate a unique link. Any HTTP request sent to that link will instantly appear below.</p>
+
+<div id="error-banner" class="error-banner"></div>
+
+<button onclick="generateLink()" id="generate-btn">Generate New Link</button>
+
+<div class="link-container" id="link-section" style="display: none;">
+    <input type="text" id="link-input" readonly>
+    <button class="secondary" onclick="copyLink()" id="copy-btn">Copy</button>
+</div>
+
+<div id="waiting" class="spinner">Waiting for a request to arrive...</div>
+
+<div id="request-data">
+    <h2 id="req-method-url"></h2>
+
+    <h3>Headers</h3>
+    <pre><code id="req-headers"></code></pre>
+
+    <h3>Query Parameters</h3>
+    <pre><code id="req-query"></code></pre>
+
+    <h3>Body</h3>
+    <pre><code id="req-body"></code></pre>
+</div>
+
+<script>
+    let evtSource = null;
+
+    function showError(msg) {
+        const banner = document.getElementById('error-banner');
+        banner.textContent = "Error: " + msg;
+        banner.style.display = 'block';
+        setTimeout(() => { banner.style.display = 'none'; }, 5000);
+    }
+
+    async function generateLink() {
+        try {
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = true;
+            btn.textContent = "Generating...";
+
+            const res = await fetch('/api/generate', { method: 'POST' });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || res.statusText);
+            }
+
+            const data = await res.json();
+            const link = `${window.location.protocol}//${window.location.host}/${data.id}`;
+
+            // Update UI
+            document.getElementById('link-input').value = link;
+            document.getElementById('link-section').style.display = 'flex';
+            document.getElementById('request-data').style.display = 'none';
+            document.getElementById('waiting').style.display = 'block';
+
+            // Setup Real-time listening (SSE)
+            if (evtSource) evtSource.close();
+            evtSource = new EventSource(`/api/stream/${data.id}`);
+
+            evtSource.onmessage = function(event) {
+                displayRequest(JSON.parse(event.data));
+                evtSource.close(); // Close after receiving the first request
+            };
+
+            evtSource.onerror = function() {
+                evtSource.close();
+                document.getElementById('waiting').style.display = 'none';
+            };
+
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            const btn = document.getElementById('generate-btn');
+            btn.disabled = false;
+            btn.textContent = "Generate New Link";
+        }
+    }
+
+    function copyLink() {
+        const input = document.getElementById('link-input');
+        input.select();
+        document.execCommand('copy');
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = "Copy"; }, 2000);
+    }
+
+    function displayRequest(data) {
+        document.getElementById('waiting').style.display = 'none';
+        document.getElementById('request-data').style.display = 'block';
+
+        document.getElementById('req-method-url').textContent = `${data.method} ${data.url}`;
+
+        // Format Headers
+        document.getElementById('req-headers').textContent =
+            Object.entries(data.headers || {})
+                .map(([k, v]) => `${k}: ${v.join(', ')}`)
+                .join('\n') || 'No headers provided';
+
+        // Format Queries
+        document.getElementById('req-query').textContent =
+            Object.entries(data.query || {})
+                .map(([k, v]) => `${k}=${v.join(', ')}`)
+                .join('\n') || 'No query parameters';
+
+        // Format Body
+        let bodyText = data.body;
+        try {
+            // Try to pretty-print JSON if possible
+            const parsed = JSON.parse(bodyText);
+            bodyText = JSON.stringify(parsed, null, 2);
+        } catch(e) {} // Leave as plain text if not JSON
+
+        document.getElementById('req-body').textContent = bodyText || '(Empty Body)';
+    }
+</script>
+</body>
+</html>
